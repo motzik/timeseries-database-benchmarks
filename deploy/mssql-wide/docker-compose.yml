@@ -1,0 +1,22 @@
+version: "3.9"
+
+services:
+  mssql:
+    image: mcr.microsoft.com/mssql/server:2022-latest
+    container_name: mssql-wide
+    environment:
+      ACCEPT_EULA: "Y"
+      MSSQL_SA_PASSWORD: "${MSSQL_WIDE_PASSWORD}"
+    ports:
+      - "1433:1433"
+
+  benchmark:
+    image: benchmark-runner:latest
+    depends_on:
+      - mssql
+    environment:
+      MSSQL_HOST: mssql
+      MSSQL_PORT: 1433
+      MSSQL_DB: telemetry
+      MSSQL_USER: sa
+      MSSQL_PASSWORD: "${MSSQL_WIDE_PASSWORD}"

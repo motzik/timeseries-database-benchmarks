@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+from dotenv import load_dotenv
+
 import argparse
 import csv
 import os
 from pathlib import Path
 from datetime import datetime, timezone
 
-from benchmarks.job_full import run_job_full, BenchmarkRun
-from db.mssql_narrow import MSSQLConfig, MSSQLNarrowDatabase
+from benchmark.benchmarks.job_full import (run_job_full, BenchmarkRun)
+from benchmark.db.mssql_narrow import MSSQLNarrowDatabase
+from benchmark.db.mssql_wide import MSSQLWideDatabase
+from benchmark.db.mssql_config import MSSQLConfig
+
+
+ENV_PATH = Path(__file__).resolve().parent / ".env"
+load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 
 def ensure_results_file(path: Path) -> None:
@@ -46,13 +54,17 @@ def load_db(db_name: str):
         cfg = MSSQLConfig.from_env(prefix="MSSQL_NARROW")
         db = MSSQLNarrowDatabase(cfg)
         return db
+    if db_name == "mssql_wide":
+        cfg = MSSQLConfig.from_env(prefix="MSSQL_WIDE")
+        db = MSSQLWideDatabase(cfg)
+        return db
     else:
         raise ValueError(f"Unsupported db: {db_name}")
 
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--db", required=True, choices=["mssql_narrow"])
+    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide"])
     p.add_argument("--benchmark", required=True, choices=["job_full"])
     p.add_argument("--job-id", type=int, default=int(os.environ.get("JOB_ID", "3137")))
     p.add_argument("--runs", type=int, default=5)

@@ -3,34 +3,26 @@ from __future__ import annotations
 from typing import Optional
 
 import pyodbc
+
 from benchmark.db.base import Database, QueryResult
 from benchmark.db.mssql_config import MSSQLConfig
 
 JOB_FULL_SQL = """
-               SELECT d.id AS dataset_id,
-                      d.[timestamp] AS dataset_timestamp, d.type AS dataset_type, sr.id AS sensor_record_id, sr.sensor_id, s.name AS sensor_name, sr.value
-               FROM dbo.dataset d
-                   JOIN dbo.sensor_record sr
-               ON sr.dataset_id = d.id
-                   LEFT JOIN dbo.sensor s
-                   ON s.id = sr.sensor_id
-               WHERE d.job_id = ?
-               ORDER BY
-                   d.[timestamp] ASC,
-                   d.id ASC,
-                   sr.sensor_id ASC; \
+               SELECT *
+               FROM dataset
+               WHERE job_id = ?
+               ORDER BY timestamp ASC; \
                """
 
-
-class MSSQLNarrowDatabase(Database):
+class MSSQLWideDatabase(Database):
     def __init__(self, config: MSSQLConfig):
         self.config = config
-        self._conn: Optional[pyodbc.Connection] = None
+        self._conn: Optional[pyodbc.Connection] = None 
 
     def connect(self) -> None:
         if self._conn is not None:
             return
-
+        
         encrypt = "yes" if self.config.encrypt else "no"
         conn_str = (
             f"DRIVER={{{self.config.driver}}};"
@@ -50,11 +42,11 @@ class MSSQLNarrowDatabase(Database):
             self._conn.close()
         finally:
             self._conn = None
-
+    
     def job_full(self, job_id: int) -> QueryResult:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
-
+        
         cursor = self._conn.cursor()
         cursor.execute(JOB_FULL_SQL, (job_id,))
 
