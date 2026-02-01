@@ -1,0 +1,31 @@
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.venv/
+venv/
+
+# ---- Environment / Secrets ----
+.env
+.env.*
+**/.env
+**/.env.*
+
+# ---- Benchmark results ----
+results/
+**/results/
+*.csv
+
+# ---- Logs / temp ----
+*.log
+*.tmp
+
+# ---- OS / Editor ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# ---- Docker ----
+*.pid
