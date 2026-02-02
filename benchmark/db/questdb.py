@@ -38,6 +38,19 @@ DASHBOARD_SPEED_10M_SQL = """
                           ORDER BY bucket ASC; \
                           """
 
+DASHBOARD_SPEED_10M_MULTI_SQL = """
+                                SELECT timestamp_floor('10m', timestamp) AS bucket,
+                                       vehicle_id                        AS vehicle_id,
+                                       avg(telSpeed)                     AS avg_speed
+                                FROM dataset
+                                WHERE vehicle_id IN ({vehicle_placeholders})
+                                  AND timestamp >= %s
+                                  AND timestamp
+                                    < %s
+                                GROUP BY bucket, vehicle_id
+                                ORDER BY bucket ASC, vehicle_id ASC; \
+                                """
+
 
 @dataclass
 class QuestDBConfig:
@@ -109,6 +122,25 @@ class QuestDBWideDatabase(Database):
 
         rows = cur.fetchall()
         return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m_multi(
+        self,
+        vehicle_ids: list[int],
+        start_ts,
+        end_ts,
+    ) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cur = self._conn.cursor()
+        placeholders = ", ".join(["%s"] * len(vehicle_ids))
+        sql = DASHBOARD_SPEED_10M_MULTI_SQL.format(vehicle_placeholders=placeholders)
+        params = [str(vehicle_id) for vehicle_id in vehicle_ids] + [start_ts, end_ts]
+        cur.execute(sql, params)
+
+        rows = cur.fetchall()
+        return QueryResult(row_count=len(rows))
+
 
     def create_new_vehicle(self) -> int:
         if self._conn is None:

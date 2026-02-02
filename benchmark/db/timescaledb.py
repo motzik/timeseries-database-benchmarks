@@ -38,6 +38,19 @@ DASHBOARD_SPEED_10M_SQL = """
                           ORDER BY bucket ASC; \
                           """
 
+DASHBOARD_SPEED_10M_MULTI_SQL = """
+                                SELECT time_bucket(INTERVAL '10 minutes', timestamp) AS bucket,
+                                       vehicle_id,
+                                       avg(telSpeed)                                 AS avg_speed
+                                FROM dataset
+                                WHERE vehicle_id = ANY(%s)
+                                  AND timestamp >= %s
+                                  AND timestamp
+                                    < %s
+                                GROUP BY bucket, vehicle_id
+                                ORDER BY bucket ASC, vehicle_id ASC; \
+                                """
+
 CREATE_VEHICLE_SQL = """
                      INSERT INTO vehicle (name)
                      VALUES (%s) RETURNING id; \
@@ -153,6 +166,20 @@ class TimescaleDatabase(Database):
 
         with self._conn.cursor() as cur:
             cur.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts))
+            rows = cur.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m_multi(
+        self,
+        vehicle_ids: list[int],
+        start_ts: datetime,
+        end_ts: datetime,
+    ) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        with self._conn.cursor() as cur:
+            cur.execute(DASHBOARD_SPEED_10M_MULTI_SQL, (vehicle_ids, start_ts, end_ts))
             rows = cur.fetchall()
         return QueryResult(row_count=len(rows))
 

@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from benchmark.benchmarks.dashboard_speed_10m import run_dashboard_speed_10m
+from benchmark.benchmarks.dashboard_speed_10m_multi import run_dashboard_speed_10m_multi
 from benchmark.benchmarks.insert_10k import run_insert_10k
 from benchmark.benchmarks.job_full import (run_job_full, BenchmarkRun)
 from benchmark.benchmarks.last_n_by_vehicle import run_last_n_by_vehicle
@@ -79,12 +80,13 @@ def main() -> int:
     p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb"])
     p.add_argument(
         "--benchmark",
-        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m", "insert_10k"],
+        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m", "dashboard_speed_10m_multi", "insert_10k"],
         required=True,
     )
     p.add_argument("--job-id", type=int, default=int(os.environ.get("JOB_ID", "3137")))
     p.add_argument("--limit", type=int, default=5000)
     p.add_argument("--vehicle-id", type=int)
+    p.add_argument("--vehicle-ids", type=str)
     p.add_argument("--start-ts", type=str)
     p.add_argument("--end-ts", type=str)
     p.add_argument("--runs", type=int, default=5)
@@ -146,6 +148,22 @@ def run_selected_benchmark(args, db):
             end_ts=end_ts,
         )
 
+    if args.benchmark == "dashboard_speed_10m_multi":
+        if (args.vehicle_ids is None) or (args.start_ts is None) or (args.end_ts is None):
+            raise ValueError("vehicle_ids, start_ts and end_ts are required for dashboard_speed_10m_multi benchmark")
+
+        vehicle_ids = parse_vehicle_ids(args.vehicle_ids)
+        start_ts = parse_dt(args.start_ts)
+        end_ts = parse_dt(args.end_ts)
+
+        return run_dashboard_speed_10m_multi(
+            db,
+            db_name=args.db,
+            vehicle_ids=vehicle_ids,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+
     if args.benchmark == "insert_10k":
         if args.start_ts is None:
             raise ValueError("start_ts is required for insert_10k benchmark")
@@ -164,6 +182,18 @@ def run_selected_benchmark(args, db):
 
 def parse_dt(s: str) -> datetime:
     return datetime.fromisoformat(s)
+
+
+def parse_vehicle_ids(value: str) -> list[int]:
+    vehicle_ids = []
+    for item in value.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        vehicle_ids.append(int(item))
+    if not vehicle_ids:
+        raise ValueError("vehicle_ids must contain at least one id")
+    return vehicle_ids
 
 
 if __name__ == "__main__":

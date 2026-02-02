@@ -38,6 +38,23 @@ DASHBOARD_SPEED_10M_SQL = """
                           ORDER BY bucket ASC;
                           """
 
+DASHBOARD_SPEED_10M_MULTI_SQL = """
+                                SELECT DATEADD(
+                                           minute, (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0) AS bucket,
+                                       vehicle_id                                                     AS vehicle_id,
+                                       AVG(TRY_CAST(telSpeed AS float))                               AS avg_speed
+                                FROM dbo.dataset
+                                WHERE vehicle_id IN ({vehicle_placeholders})
+                                  AND [timestamp] >= ?
+                                  AND [timestamp]
+                                    < ?
+                                GROUP BY DATEADD(
+                                    minute,
+                                    (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0),
+                                         vehicle_id
+                                ORDER BY bucket ASC, vehicle_id ASC;
+                                """
+
 INSERT_BATCH_SQL = """
                    INSERT INTO dbo.dataset (job_id,
                                             vehicle_id,
@@ -140,6 +157,24 @@ class MSSQLWideDatabase(Database):
 
         cursor = self._conn.cursor()
         cursor.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts,))
+
+        rows = cursor.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m_multi(
+        self,
+        vehicle_ids: list[int],
+        start_ts,
+        end_ts,
+    ) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cursor = self._conn.cursor()
+        placeholders = ", ".join(["?"] * len(vehicle_ids))
+        sql = DASHBOARD_SPEED_10M_MULTI_SQL.format(vehicle_placeholders=placeholders)
+        params = list(vehicle_ids) + [start_ts, end_ts]
+        cursor.execute(sql, params)
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))

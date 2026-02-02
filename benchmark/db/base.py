@@ -64,6 +64,18 @@ class Database(ABC):
         raise NotImplementedError
 
     @abstractmethod
+    def dashboard_speed_10m_multi(
+        self,
+        vehicle_ids: Sequence[int],
+        start_ts: datetime,
+        end_ts: datetime,
+    ) -> QueryResult:
+        """
+        Benchmark query #x: Speed in 10min buckets over a specific time frame for multiple vehicles.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
     def insert_batch(self, batch: InsertBatch) -> QueryResult:
         """
         Insert a batch of data into the database.

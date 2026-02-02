@@ -61,6 +61,25 @@ DASHBOARD_SPEED_10M_SQL = """
                           ORDER BY bucket ASC;
                           """
 
+DASHBOARD_SPEED_10M_MULTI_SQL = """
+                                SELECT DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0) AS bucket,
+                                       j.vehicle_id                                                      AS vehicle_id,
+                                       AVG(CAST(sr.value AS float))                                       AS avg_speed
+                                FROM dbo.dataset d
+                                         JOIN dbo.sensor_record sr
+                                              ON sr.dataset_id = d.id
+                                         JOIN dbo.job j
+                                              ON j.id = d.job_id
+                                WHERE j.vehicle_id IN ({vehicle_placeholders})
+                                  AND d.[timestamp] >= ?
+                                  AND d.[timestamp]
+                                    < ?
+                                  AND sr.sensor_id = 45
+                                GROUP BY DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0),
+                                         j.vehicle_id
+                                ORDER BY bucket ASC, j.vehicle_id ASC;
+                                """
+
 NEXT_DATASET_ID_SQL = "SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.dataset;"
 NEXT_SENSOR_RECORD_ID_SQL = "SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.sensor_record;"
 
@@ -130,6 +149,24 @@ class MSSQLNarrowDatabase(Database):
 
         cursor = self._conn.cursor()
         cursor.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts,))
+
+        rows = cursor.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m_multi(
+        self,
+        vehicle_ids: list[int],
+        start_ts: datetime,
+        end_ts: datetime,
+    ) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cursor = self._conn.cursor()
+        placeholders = ", ".join(["?"] * len(vehicle_ids))
+        sql = DASHBOARD_SPEED_10M_MULTI_SQL.format(vehicle_placeholders=placeholders)
+        params = list(vehicle_ids) + [start_ts, end_ts]
+        cursor.execute(sql, params)
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))
@@ -286,5 +323,4 @@ class MSSQLNarrowDatabase(Database):
             raise
 
         return QueryResult(row_count=len(dataset_params))
-
 
