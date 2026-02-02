@@ -23,6 +23,20 @@ LAST_N_BY_VEHICLE_SQL = """
                             LIMIT %s; \
                         """
 
+DASHBOARD_SPEED_10M_SQL = """
+                          SELECT
+                              timestamp AS bucket, avg (telSpeed) AS avg_speed
+                          FROM dataset
+                          WHERE vehicle_id = %s
+                            AND timestamp >= %s
+                            AND timestamp
+                              < %s
+                              SAMPLE BY 10m
+                              ALIGN TO CALENDAR
+                          ORDER BY bucket ASC; \
+                          """
+
+
 @dataclass
 class QuestDBConfig:
     host: str = "localhost"
@@ -51,8 +65,8 @@ class QuestDBWideDatabase(Database):
             host=self.config.host,
             port=self.config.port,
             dbname=self.config.database,
-            user="admin",       # ignored by QuestDB, but required by psycopg2
-            password="quest",   # ignored
+            user="admin",  # ignored by QuestDB, but required by psycopg2
+            password="quest",  # ignored
         )
         self._conn.autocommit = True
 
@@ -80,6 +94,16 @@ class QuestDBWideDatabase(Database):
 
         cur = self._conn.cursor()
         cur.execute(LAST_N_BY_VEHICLE_SQL, (vehicle_id, n,))
+
+        rows = cur.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m(self, vehicle_id: int, start_ts, end_ts) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cur = self._conn.cursor()
+        cur.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts,))
 
         rows = cur.fetchall()
         return QueryResult(row_count=len(rows))

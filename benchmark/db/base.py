@@ -1,6 +1,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Iterable, Optional, Sequence
 from dataclasses import dataclass
+from datetime import datetime
 
 @dataclass(frozen=True)
 class QueryResult:
@@ -37,3 +38,9 @@ class Database(ABC):
         """
         raise NotImplementedError
 
+    @abstractmethod
+    def dashboard_speed_10m(self, vehicle_id: int, start_ts: datetime, end_ts: datetime) -> QueryResult:
+        """
+        Benchmark query #x: Speed in 10min buckets over a specific time frame.
+        """
+        raise NotImplementedError

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from datetime import datetime
 
 import pyodbc
 from benchmark.db.base import Database, QueryResult
@@ -40,8 +41,25 @@ LAST_N_BY_VEHICLE_SQL = """
                             d.timestamp DESC,
                             d.id DESC,
                             sr.sensor_id ASC; \
-
+ \
                         """
+
+DASHBOARD_SPEED_10M_SQL = """
+                          SELECT DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0) AS bucket,
+                                 AVG(CAST(sr.value AS float))                                       AS avg_speed
+                          FROM dbo.dataset d
+                                   JOIN dbo.sensor_record sr
+                                        ON sr.dataset_id = d.id
+                                   JOIN dbo.job j
+                                        ON j.id = d.job_id
+                          WHERE j.vehicle_id = ?
+                            AND d.[timestamp] >= ?
+                            AND d.[timestamp]
+                              < ?
+                            AND sr.sensor_id = 45
+                          GROUP BY DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0)
+                          ORDER BY bucket ASC;
+                          """
 
 
 class MSSQLNarrowDatabase(Database):
@@ -89,6 +107,16 @@ class MSSQLNarrowDatabase(Database):
 
         cursor = self._conn.cursor()
         cursor.execute(LAST_N_BY_VEHICLE_SQL, (n, vehicle_id,))
+
+        rows = cursor.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m(self, vehicle_id: int, start_ts: datetime, end_ts: datetime) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cursor = self._conn.cursor()
+        cursor.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts,))
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))

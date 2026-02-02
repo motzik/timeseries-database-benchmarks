@@ -11,7 +11,7 @@ JOB_FULL_SQL = """
                SELECT *
                FROM dataset
                WHERE job_id = ?
-               ORDER BY timestamp ASC; \
+               ORDER BY timestamp ASC;
                """
 
 LAST_N_BY_VEHICLE_SQL = """
@@ -19,18 +19,35 @@ LAST_N_BY_VEHICLE_SQL = """
                         FROM dataset
                         WHERE vehicle_id = ?
                         ORDER BY timestamp DESC
-                        OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY; \
+                        OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY;
                         """
+
+DASHBOARD_SPEED_10M_SQL = """
+                          SELECT DATEADD(
+                                     minute, (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0) AS bucket,
+                                 AVG(TRY_CAST(telSpeed AS float))                             AS avg_speed
+                          FROM dbo.dataset
+                          WHERE vehicle_id = ?
+                            AND [timestamp] >= ?
+                            AND [timestamp]
+                              < ?
+                          GROUP BY DATEADD(
+                              minute,
+                              (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0)
+                          ORDER BY bucket ASC;
+
+                          """
+
 
 class MSSQLWideDatabase(Database):
     def __init__(self, config: MSSQLConfig):
         self.config = config
-        self._conn: Optional[pyodbc.Connection] = None 
+        self._conn: Optional[pyodbc.Connection] = None
 
     def connect(self) -> None:
         if self._conn is not None:
             return
-        
+
         encrypt = "yes" if self.config.encrypt else "no"
         conn_str = (
             f"DRIVER={{{self.config.driver}}};"
@@ -50,11 +67,11 @@ class MSSQLWideDatabase(Database):
             self._conn.close()
         finally:
             self._conn = None
-    
+
     def job_full(self, job_id: int) -> QueryResult:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
-        
+
         cursor = self._conn.cursor()
         cursor.execute(JOB_FULL_SQL, (job_id,))
 
@@ -67,6 +84,16 @@ class MSSQLWideDatabase(Database):
 
         cursor = self._conn.cursor()
         cursor.execute(LAST_N_BY_VEHICLE_SQL, (vehicle_id, n,))
+
+        rows = cursor.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def dashboard_speed_10m(self, vehicle_id: int, start_ts, end_ts) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cursor = self._conn.cursor()
+        cursor.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts,))
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))

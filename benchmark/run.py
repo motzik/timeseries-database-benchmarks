@@ -1,18 +1,19 @@
 from __future__ import annotations
 
-from dotenv import load_dotenv
-
 import argparse
 import csv
 import os
-from pathlib import Path
 from datetime import datetime, timezone
+from pathlib import Path
 
+from dotenv import load_dotenv
+
+from benchmark.benchmarks.dashboard_speed_10m import run_dashboard_speed_10m
 from benchmark.benchmarks.job_full import (run_job_full, BenchmarkRun)
 from benchmark.benchmarks.last_n_by_vehicle import run_last_n_by_vehicle
+from benchmark.db.mssql_config import MSSQLConfig
 from benchmark.db.mssql_narrow import MSSQLNarrowDatabase
 from benchmark.db.mssql_wide import MSSQLWideDatabase
-from benchmark.db.mssql_config import MSSQLConfig
 from benchmark.db.questdb import QuestDBConfig, QuestDBWideDatabase
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
@@ -72,12 +73,14 @@ def main() -> int:
     p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb"])
     p.add_argument(
         "--benchmark",
-        choices=["job_full", "last_n_by_vehicle"],
+        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m"],
         required=True,
     )
     p.add_argument("--job-id", type=int, default=int(os.environ.get("JOB_ID", "3137")))
-    p.add_argument("--vehicle-id", type=int)
     p.add_argument("--limit", type=int, default=5000)
+    p.add_argument("--vehicle-id", type=int)
+    p.add_argument("--start-ts", type=str)
+    p.add_argument("--end-ts", type=str)
     p.add_argument("--runs", type=int, default=5)
     p.add_argument("--warmup", type=int, default=1)
     p.add_argument("--out", type=str, default=str(Path("results") / "results.csv"))
@@ -108,12 +111,12 @@ def main() -> int:
 
 def run_selected_benchmark(args, db):
     if args.benchmark == "job_full":
-        if(args.job_id is None):
+        if (args.job_id is None):
             raise ValueError("job_id is required for job_full benchmark")
         return run_job_full(db, db_name=args.db, job_id=args.job_id)
 
     if args.benchmark == "last_n_by_vehicle":
-        if(args.vehicle_id is None):
+        if (args.vehicle_id is None):
             raise ValueError("vehicle_id is required for last_n_by_vehicle benchmark")
         return run_last_n_by_vehicle(
             db,
@@ -122,7 +125,28 @@ def run_selected_benchmark(args, db):
             n=args.limit,
         )
 
+    if args.benchmark == "dashboard_speed_10m":
+        if (args.vehicle_id is None) or (args.start_ts is None) or (args.end_ts is None):
+            raise ValueError("vehicle_id, start_ts and end_ts are required for dashboard_speed_10m benchmark")
+
+        start_ts = parse_dt(args.start_ts)
+        end_ts = parse_dt(args.end_ts)
+
+        return run_dashboard_speed_10m(
+            db,
+            db_name=args.db,
+            vehicle_id=args.vehicle_id,
+            start_ts=start_ts,
+            end_ts=end_ts,
+        )
+
     raise ValueError(f"Unsupported benchmark: {args.benchmark}")
+
+
+def parse_dt(s: str) -> datetime:
+    # expects an iso string (like "2023-01-01T12:34:56")
+    return datetime.fromisoformat(s)
+
 
 if __name__ == "__main__":
     raise SystemExit(main())
