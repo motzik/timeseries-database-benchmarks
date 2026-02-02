@@ -21,6 +21,28 @@ JOB_FULL_SQL = """
                    sr.sensor_id ASC; \
                """
 
+LAST_N_BY_VEHICLE_SQL = """
+                        WITH last_ds AS (SELECT TOP(?) d.id, d.[timestamp]
+                        FROM dbo.dataset d
+                            LEFT JOIN dbo.job j
+                        ON j.id = d.job_id
+                        WHERE j.vehicle_id = ?
+                        ORDER BY d.[timestamp] DESC, d.id DESC
+                            )
+                        SELECT d.id AS dataset_id,
+                               d.[timestamp] AS dataset_timestamp, sr.id AS sensor_record_id, sr.sensor_id, s.name AS sensor_name, sr.value
+                        FROM last_ds d
+                            JOIN dbo.sensor_record sr
+                        ON sr.dataset_id = d.id
+                            LEFT JOIN dbo.sensor s
+                            ON s.id = sr.sensor_id
+                        ORDER BY
+                            d.timestamp DESC,
+                            d.id DESC,
+                            sr.sensor_id ASC; \
+
+                        """
+
 
 class MSSQLNarrowDatabase(Database):
     def __init__(self, config: MSSQLConfig):
@@ -57,6 +79,16 @@ class MSSQLNarrowDatabase(Database):
 
         cursor = self._conn.cursor()
         cursor.execute(JOB_FULL_SQL, (job_id,))
+
+        rows = cursor.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def last_n_by_vehicle(self, vehicle_id: int, n: int) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cursor = self._conn.cursor()
+        cursor.execute(LAST_N_BY_VEHICLE_SQL, (n, vehicle_id,))
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))

@@ -26,8 +26,14 @@ class Database(ABC):
     @abstractmethod
     def job_full(self, job_id: Any) -> QueryResult:
         """
-        Benchmark query #4: Full data for a job.
-        Must execute the DB-specific query and fully consume the results.
+        Benchmark query #x: Full data for a job.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def last_n_by_vehicle(self, vehicle_id: int, n: int) -> QueryResult:
+        """
+        Benchmark query #x: Last N datasets for a specific vehicle.
         """
         raise NotImplementedError
 

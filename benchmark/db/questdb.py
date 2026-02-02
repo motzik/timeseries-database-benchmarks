@@ -15,6 +15,14 @@ JOB_FULL_SQL = """
                ORDER BY timestamp ASC; \
                """
 
+LAST_N_BY_VEHICLE_SQL = """
+                        SELECT *
+                        FROM dataset
+                        WHERE vehicle_id = %s
+                        ORDER BY timestamp DESC
+                            LIMIT %s; \
+                        """
+
 @dataclass
 class QuestDBConfig:
     host: str = "localhost"
@@ -62,6 +70,16 @@ class QuestDBWideDatabase(Database):
 
         cur = self._conn.cursor()
         cur.execute(JOB_FULL_SQL, (job_id,))
+
+        rows = cur.fetchall()
+        return QueryResult(row_count=len(rows))
+
+    def last_n_by_vehicle(self, vehicle_id: int, n: int) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cur = self._conn.cursor()
+        cur.execute(LAST_N_BY_VEHICLE_SQL, (vehicle_id, n,))
 
         rows = cur.fetchall()
         return QueryResult(row_count=len(rows))
