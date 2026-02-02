@@ -67,7 +67,7 @@ class QuestDBConfig:
         )
 
 
-class QuestDBWideDatabase(Database):
+class QuestDBDatabase(Database):
     def __init__(self, config: QuestDBConfig):
         self.config = config
         self._conn: Optional[psycopg2.extensions.connection] = None

@@ -110,7 +110,7 @@ class TimescaleDBConfig:
         )
 
 
-class TimescaleDatabase(Database):
+class TimescaleDBDatabase(Database):
     def __init__(self, config: TimescaleDBConfig):
         self.config = config
         self._conn: Optional[psycopg2.extensions.connection] = None

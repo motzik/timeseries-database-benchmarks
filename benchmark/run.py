@@ -16,11 +16,20 @@ from benchmark.benchmarks.last_n_by_vehicle import run_last_n_by_vehicle
 from benchmark.db.mssql_config import MSSQLConfig
 from benchmark.db.mssql_narrow import MSSQLNarrowDatabase
 from benchmark.db.mssql_wide import MSSQLWideDatabase
-from benchmark.db.questdb import QuestDBConfig, QuestDBWideDatabase
-from benchmark.db.timescaledb import TimescaleDBConfig, TimescaleDatabase
+from benchmark.db.questdb import QuestDBConfig, QuestDBDatabase
+from benchmark.db.timescaledb import TimescaleDBConfig, TimescaleDBDatabase
+
+BENCHMARK_CHOICES = [
+    "job_full",
+    "last_n_by_vehicle",
+    "dashboard_speed_10m",
+    "dashboard_speed_10m_multi",
+    "insert_10k",
+]
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
-load_dotenv(dotenv_path=ENV_PATH, override=True)
+if ENV_PATH.exists():
+    load_dotenv(dotenv_path=ENV_PATH, override=True)
 
 
 def ensure_results_file(path: Path) -> None:
@@ -65,11 +74,11 @@ def load_db(db_name: str):
         return db
     if db_name == "questdb":
         cfg = QuestDBConfig.from_env(prefix="QUESTDB")
-        db = QuestDBWideDatabase(cfg)
+        db = QuestDBDatabase(cfg)
         return db
     if db_name == "timescaledb":
         cfg = TimescaleDBConfig.from_env(prefix="TIMESCALEDB")
-        db = TimescaleDatabase(cfg)
+        db = TimescaleDBDatabase(cfg)
         return db
     else:
         raise ValueError(f"Unsupported db: {db_name}")
@@ -80,7 +89,7 @@ def main() -> int:
     p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb"])
     p.add_argument(
         "--benchmark",
-        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m", "dashboard_speed_10m_multi", "insert_10k"],
+        choices=["all", *BENCHMARK_CHOICES],
         required=True,
     )
     p.add_argument("--job-id", type=int, default=int(os.environ.get("JOB_ID", "3137")))
@@ -88,6 +97,7 @@ def main() -> int:
     p.add_argument("--vehicle-id", type=int)
     p.add_argument("--vehicle-ids", type=str)
     p.add_argument("--start-ts", type=str)
+    p.add_argument("--start-insert-ts", type=str)
     p.add_argument("--end-ts", type=str)
     p.add_argument("--runs", type=int, default=5)
     p.add_argument("--warmup", type=int, default=1)
@@ -101,18 +111,24 @@ def main() -> int:
     db.connect()
 
     try:
-        # warmup runs (not recorded)
-        for _ in range(max(0, args.warmup)):
-            _ = run_selected_benchmark(args, db)
+        benchmarks_to_run = BENCHMARK_CHOICES if args.benchmark == "all" else [args.benchmark]
 
-        # real runs
-        for i in range(args.runs):
-            r = run_selected_benchmark(args, db)
-            append_result(out_path, i + 1, r)
-            print(f"Run {i + 1}/{args.runs}: {r.latency_ms:.3f} ms, {r.row_count} rows")
+        for bench in benchmarks_to_run:
+            args.benchmark = bench
+
+            # warmup runs (not recorded)
+            for _ in range(max(0, args.warmup)):
+                _ = run_selected_benchmark(args, db)
+
+            # real runs
+            for i in range(args.runs):
+                r = run_selected_benchmark(args, db)
+                append_result(out_path, i + 1, r)
+                print(f"[{bench}] Run {i + 1}/{args.runs}: {r.latency_ms:.3f} ms, {r.row_count} rows")
 
     finally:
         db.close()
+
     print("results append to ", out_path)
     return 0
 
@@ -165,15 +181,15 @@ def run_selected_benchmark(args, db):
         )
 
     if args.benchmark == "insert_10k":
-        if args.start_ts is None:
+        if args.start_insert_ts is None:
             raise ValueError("start_ts is required for insert_10k benchmark")
-        if args.start_ts < "2026-01-01T00:00:00":
+        if args.start_insert_ts < "2026-01-01T00:00:00":
             raise ValueError("start_ts must be at least in 2026 to avoid conflicts with existing data")
-        start_ts = parse_dt(args.start_ts)
+        start_insert_ts = parse_dt(args.start_insert_ts)
         return run_insert_10k(
             db,
             db_name=args.db,
-            start_ts=start_ts,
+            start_ts=start_insert_ts,
             rows=10_000,
         )
 
