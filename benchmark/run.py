@@ -15,6 +15,7 @@ from benchmark.db.mssql_config import MSSQLConfig
 from benchmark.db.mssql_narrow import MSSQLNarrowDatabase
 from benchmark.db.mssql_wide import MSSQLWideDatabase
 from benchmark.db.questdb import QuestDBConfig, QuestDBWideDatabase
+from benchmark.db.timescaledb import TimescaleDBConfig, TimescaleDatabase
 
 ENV_PATH = Path(__file__).resolve().parent / ".env"
 load_dotenv(dotenv_path=ENV_PATH, override=True)
@@ -64,13 +65,17 @@ def load_db(db_name: str):
         cfg = QuestDBConfig.from_env(prefix="QUESTDB")
         db = QuestDBWideDatabase(cfg)
         return db
+    if db_name == "timescaledb":
+        cfg = TimescaleDBConfig.from_env(prefix="TIMESCALEDB")
+        db = TimescaleDatabase(cfg)
+        return db
     else:
         raise ValueError(f"Unsupported db: {db_name}")
 
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb"])
+    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb", "timescaledb"])
     p.add_argument(
         "--benchmark",
         choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m"],
