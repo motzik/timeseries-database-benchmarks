@@ -8,11 +8,8 @@ mkdir -p "$RESULTS_DIR"
 RUNNER_IMAGE="benchmark-runner:latest"
 
 DBS=(
-  "mssql-narrow"
-  "mssql-wide"
-  "timescaledb"
-  "influxdb"
-  "questdb"
+  "mssql_narrow"
+  "mssql_wide"
 )
 
 run_one_db () {
