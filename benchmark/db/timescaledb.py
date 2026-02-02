@@ -4,10 +4,12 @@ import os
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Optional
+from uuid import uuid4
 
 import psycopg2
+from psycopg2.extras import execute_values
 
-from benchmark.db.base import Database, QueryResult
+from benchmark.db.base import Database, QueryResult, InsertBatch
 
 JOB_FULL_SQL = """
                SELECT *
@@ -35,6 +37,43 @@ DASHBOARD_SPEED_10M_SQL = """
                           GROUP BY bucket
                           ORDER BY bucket ASC; \
                           """
+
+CREATE_VEHICLE_SQL = """
+                     INSERT INTO vehicle (name)
+                     VALUES (%s) RETURNING id; \
+                     """
+
+CREATE_JOB_SQL = """
+                 INSERT INTO job (vehicle_id)
+                 VALUES (%s) RETURNING id; \
+                 """
+
+INSERT_BATCH_SQL = """
+                   INSERT INTO public.dataset (timestamp,
+                                               vehicle_id,
+                                               job_id,
+                                               telspeed,
+                                               string)
+                   VALUES %s; \
+                   """
+
+DELETE_DATASET_BY_JOB_SQL = """
+                            DELETE
+                            FROM dataset
+                            WHERE job_id = %s; \
+                            """
+
+DELETE_JOB_BY_ID_SQL = """
+                       DELETE
+                       FROM job
+                       WHERE id = %s; \
+                       """
+
+DELETE_VEHICLE_BY_ID_SQL = """
+                           DELETE
+                           FROM vehicle
+                           WHERE id = %s; \
+                           """
 
 
 @dataclass
@@ -75,7 +114,7 @@ class TimescaleDatabase(Database):
             password=self.config.password,
             sslmode=self.config.sslmode,
         )
-        self._conn.autocommit = True
+        self._conn.autocommit = False
 
     def close(self) -> None:
         if self._conn is None:
@@ -116,3 +155,87 @@ class TimescaleDatabase(Database):
             cur.execute(DASHBOARD_SPEED_10M_SQL, (vehicle_id, start_ts, end_ts))
             rows = cur.fetchall()
         return QueryResult(row_count=len(rows))
+
+    def create_new_vehicle(self) -> int:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        vehicle_name = f"bench_vehicle_{uuid4().hex}"
+
+        with self._conn.cursor() as cur:
+            try:
+                cur.execute(CREATE_VEHICLE_SQL, (vehicle_name,))
+                row = cur.fetchone()
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        if row is None:
+            raise RuntimeError("Failed to create vehicle (no id returned).")
+
+        return int(row[0])
+
+    def create_new_job(self, vehicle_id: int) -> int:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        with self._conn.cursor() as cur:
+            try:
+                cur.execute(CREATE_JOB_SQL, (vehicle_id,))
+                row = cur.fetchone()
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        if row is None:
+            raise RuntimeError("Failed to create job (no id returned).")
+
+        return int(row[0])
+
+    def insert_batch(self, batch: InsertBatch) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        if not batch.rows:
+            return QueryResult(row_count=0)
+
+        values: list[tuple] = []
+        for r in batch.rows:
+            values.append((
+                r.timestamp,
+                batch.vehicle_id,
+                batch.job_id,
+                r.tel_speed,
+                batch.marker,
+            ))
+
+        with self._conn.cursor() as cur:
+            try:
+                execute_values(
+                    cur,
+                    INSERT_BATCH_SQL,
+                    values,
+                    page_size=1000,
+                )
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise
+
+        return QueryResult(row_count=len(values))
+
+    def clean_data(self, vehicle_id: int, job_id: int) -> None:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        with self._conn.cursor() as cur:
+            try:
+                cur.execute(DELETE_DATASET_BY_JOB_SQL, (job_id,))
+                cur.execute(DELETE_JOB_BY_ID_SQL, (job_id,))
+                cur.execute(DELETE_VEHICLE_BY_ID_SQL, (vehicle_id,))
+                self._conn.commit()
+            except Exception:
+                self._conn.rollback()
+                raise

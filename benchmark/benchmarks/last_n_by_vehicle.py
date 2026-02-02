@@ -22,7 +22,7 @@ def run_last_n_by_vehicle(db: Database, db_name: str, vehicle_id: int, n: int) -
     t1 = perf_counter_ns()
 
     return BenchmarkRun(
-        benchmark="job_full",
+        benchmark="last_n_by_vehicle",
         db=db_name,
         params={"vehicle_id": vehicle_id, "n": n},
         latency_ms=(t1 - t0) / 1_000_000.0,

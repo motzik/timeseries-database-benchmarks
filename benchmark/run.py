@@ -9,6 +9,7 @@ from pathlib import Path
 from dotenv import load_dotenv
 
 from benchmark.benchmarks.dashboard_speed_10m import run_dashboard_speed_10m
+from benchmark.benchmarks.insert_10k import run_insert_10k
 from benchmark.benchmarks.job_full import (run_job_full, BenchmarkRun)
 from benchmark.benchmarks.last_n_by_vehicle import run_last_n_by_vehicle
 from benchmark.db.mssql_config import MSSQLConfig
@@ -75,10 +76,10 @@ def load_db(db_name: str):
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb", "timescaledb"])
+    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb"])
     p.add_argument(
         "--benchmark",
-        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m"],
+        choices=["job_full", "last_n_by_vehicle", "dashboard_speed_10m", "insert_10k"],
         required=True,
     )
     p.add_argument("--job-id", type=int, default=int(os.environ.get("JOB_ID", "3137")))
@@ -145,11 +146,23 @@ def run_selected_benchmark(args, db):
             end_ts=end_ts,
         )
 
+    if args.benchmark == "insert_10k":
+        if args.start_ts is None:
+            raise ValueError("start_ts is required for insert_10k benchmark")
+        if args.start_ts < "2026-01-01T00:00:00":
+            raise ValueError("start_ts must be at least in 2026 to avoid conflicts with existing data")
+        start_ts = parse_dt(args.start_ts)
+        return run_insert_10k(
+            db,
+            db_name=args.db,
+            start_ts=start_ts,
+            rows=10_000,
+        )
+
     raise ValueError(f"Unsupported benchmark: {args.benchmark}")
 
 
 def parse_dt(s: str) -> datetime:
-    # expects an iso string (like "2023-01-01T12:34:56")
     return datetime.fromisoformat(s)
 
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from uuid import uuid4
 
 import pyodbc
 
@@ -35,8 +36,53 @@ DASHBOARD_SPEED_10M_SQL = """
                               minute,
                               (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0)
                           ORDER BY bucket ASC;
-
                           """
+
+INSERT_BATCH_SQL = """
+                   INSERT INTO dbo.dataset (job_id,
+                                            vehicle_id,
+                       [ timestamp],
+                       [ type],
+                                            note,
+                                            telSpeed)
+                   VALUES (?, ?, ?, ?, ?, ?);
+                   """
+
+CREATE_VEHICLE_SQL = """
+                     INSERT INTO dbo.vehicle (name, active)
+                         OUTPUT INSERTED.id
+                     VALUES (?, 1);
+                     """
+
+CREATE_JOB_SQL = """
+                 INSERT INTO dbo.job (vehicle_id)
+                     OUTPUT INSERTED.id
+                 VALUES (?);
+                 """
+
+DELETE_VEHICLE_SQL = """
+                     DELETE
+                     FROM dbo.dataset
+                     WHERE vehicle_id = ?;
+                     DELETE
+                     FROM dbo.job
+                     WHERE vehicle_id = ?;
+                     DELETE
+                     FROM dbo.vehicle
+                     WHERE id = ?;
+                     """
+
+DELETE_DATASET_SQL = """
+                     DELETE
+                     FROM dbo.dataset
+                     WHERE job_id = ?; \
+                     """
+
+DELETE_JOB_SQL = """
+                 DELETE
+                 FROM dbo.job
+                 WHERE id = ?; \
+                 """
 
 
 class MSSQLWideDatabase(Database):
@@ -97,3 +143,80 @@ class MSSQLWideDatabase(Database):
 
         rows = cursor.fetchall()
         return QueryResult(row_count=len(rows))
+
+    def insert_batch(self, batch) -> QueryResult:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        if not batch.rows:
+            return QueryResult(row_count=0)
+
+        params: list[tuple] = []
+        marker = batch.marker
+        job_id = batch.job_id
+        vehicle_id = batch.vehicle_id
+
+        for r in batch.rows:
+            # because speed is string in db
+            tel_speed_str = None if r.tel_speed is None else str(r.tel_speed)
+            params.append((job_id, vehicle_id, r.timestamp, 0, marker, tel_speed_str))
+
+        cur = self._conn.cursor()
+        cur.fast_executemany = True
+
+        try:
+            cur.executemany(INSERT_BATCH_SQL, params)
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
+        return QueryResult(row_count=len(params))
+
+    def create_new_vehicle(self) -> int:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        vehicle_name = f"bench_vehicle_{uuid4().hex}"
+
+        cur = self._conn.cursor()
+        try:
+            cur.execute(CREATE_VEHICLE_SQL, (vehicle_name,))
+            row = cur.fetchone()
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
+        if row is None:
+            raise RuntimeError("Failed to create vehicle (no id returned).")
+
+        return int(row[0])
+
+    def create_new_job(self, vehicle_id: int) -> int:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cur = self._conn.cursor()
+        try:
+            cur.execute(CREATE_JOB_SQL, (vehicle_id,))
+            row = cur.fetchone()
+            self._conn.commit()
+        except Exception:
+            self._conn.rollback()
+            raise
+
+        if row is None:
+            raise RuntimeError("Failed to create job (no id returned).")
+
+        return int(row[0])
+
+    def clean_data(self, vehicle_id: int, job_id) -> None:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        cur = self._conn.cursor()
+        cur.execute(DELETE_DATASET_SQL, (job_id,))
+        cur.execute(DELETE_JOB_SQL, (job_id,))
+        cur.execute(DELETE_VEHICLE_SQL, (vehicle_id, vehicle_id, vehicle_id))
+        self._conn.commit()
