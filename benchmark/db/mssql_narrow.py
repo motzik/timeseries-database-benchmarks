@@ -63,7 +63,7 @@ DASHBOARD_SPEED_10M_SQL = """
 
 DASHBOARD_SPEED_10M_MULTI_SQL = """
                                 SELECT DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0) AS bucket,
-                                       j.vehicle_id                                                      AS vehicle_id,
+                                       j.vehicle_id                                                       AS vehicle_id,
                                        AVG(CAST(sr.value AS float))                                       AS avg_speed
                                 FROM dbo.dataset d
                                          JOIN dbo.sensor_record sr
@@ -76,22 +76,20 @@ DASHBOARD_SPEED_10M_MULTI_SQL = """
                                     < ?
                                   AND sr.sensor_id = 45
                                 GROUP BY DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0),
-                                         j.vehicle_id
+                                    j.vehicle_id
                                 ORDER BY bucket ASC, j.vehicle_id ASC;
                                 """
 
-NEXT_DATASET_ID_SQL = "SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.dataset;"
-NEXT_SENSOR_RECORD_ID_SQL = "SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.sensor_record;"
-
 INSERT_DATASET_SQL = """
-INSERT INTO dbo.dataset (id, job_id, [timestamp], note, type)
-VALUES (?, ?, ?, ?, ?);
-"""
+                     INSERT INTO dbo.dataset (job_id, [timestamp], note, type)
+                         OUTPUT INSERTED.id
+                     VALUES (?, ?, ?, ?); \
+                     """
 
 INSERT_SENSOR_RECORD_SQL = """
-INSERT INTO dbo.sensor_record (id, value, sensor_id, dataset_id)
-VALUES (?, ?, ?, ?);
-"""
+                           INSERT INTO dbo.sensor_record (value, sensor_id, dataset_id)
+                           VALUES (?, ?, ?); \
+                           """
 
 
 class MSSQLNarrowDatabase(Database):
@@ -154,10 +152,10 @@ class MSSQLNarrowDatabase(Database):
         return QueryResult(row_count=len(rows))
 
     def dashboard_speed_10m_multi(
-        self,
-        vehicle_ids: list[int],
-        start_ts: datetime,
-        end_ts: datetime,
+            self,
+            vehicle_ids: list[int],
+            start_ts: datetime,
+            end_ts: datetime,
     ) -> QueryResult:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
@@ -177,13 +175,9 @@ class MSSQLNarrowDatabase(Database):
 
         cur = self._conn.cursor()
 
-        cur.execute("SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.vehicle;")
-        vehicle_id = int(cur.fetchone()[0])
-
         cur.execute(
             """
-            INSERT INTO dbo.vehicle (id,
-                                     name,
+            INSERT INTO dbo.vehicle (name,
                                      price_per_unit,
                                      price_per_km,
                                      price_per_hour,
@@ -193,14 +187,12 @@ class MSSQLNarrowDatabase(Database):
                                      creation,
                                      changed,
                                      version)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
+                OUTPUT INSERTED.id
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
             """,
-            (  # some dummy data because of non null fields
-                vehicle_id,
-                f"benchmark_vehicle_{vehicle_id}",
-                1.0,
-                1.0,
-                1.0,
+            (
+                f"benchmark_vehicle_{datetime.now().timestamp()}",
+                1.0, 1.0, 1.0,
                 0.20,
                 1.0,
                 1,
@@ -210,6 +202,7 @@ class MSSQLNarrowDatabase(Database):
             )
         )
 
+        vehicle_id = int(cur.fetchone()[0])
         self._conn.commit()
         return vehicle_id
 
@@ -219,20 +212,16 @@ class MSSQLNarrowDatabase(Database):
 
         cur = self._conn.cursor()
 
-        cur.execute("SELECT ISNULL(MAX(id), 0) + 1 FROM dbo.job;")
-        job_id = int(cur.fetchone()[0])
-
         cur.execute(
             """
-            INSERT INTO dbo.job (id,
-                                 vehicle_id,
-                                 local_id,
-                                 state)
-            VALUES (?, ?, '1', '1');
+            INSERT INTO dbo.job (vehicle_id, local_id, state)
+                OUTPUT INSERTED.id
+            VALUES (?, ?, ?);
             """,
-            (job_id, vehicle_id)
+            (vehicle_id, 1, 1)
         )
 
+        job_id = int(cur.fetchone()[0])
         self._conn.commit()
         return job_id
 
@@ -280,47 +269,29 @@ class MSSQLNarrowDatabase(Database):
             return QueryResult(row_count=0)
 
         SPEED_SENSOR_ID = 45
-
         cur = self._conn.cursor()
 
-        cur.execute(NEXT_DATASET_ID_SQL)
-        next_dataset_id = int(cur.fetchone()[0])
-
-        cur.execute(NEXT_SENSOR_RECORD_ID_SQL)
-        next_sr_id = int(cur.fetchone()[0])
-
-        dataset_params: list[tuple] = []
-        sr_params: list[tuple] = []
-
-        for idx, r in enumerate(batch.rows):
-            ds_id = next_dataset_id + idx
-            sr_id = next_sr_id + idx
-
-            dataset_params.append((
-                ds_id,
-                batch.job_id,
-                r.timestamp,
-                batch.marker,
-                0,
-            ))
-
-            val = None if r.tel_speed is None else str(r.tel_speed)
-            #TODO: maybe add more sensors for fair comparison
-            sr_params.append((
-                sr_id,
-                val,
-                SPEED_SENSOR_ID,
-                ds_id,
-            ))
-        cur.fast_executemany = True
-
         try:
-            cur.executemany(INSERT_DATASET_SQL, dataset_params)
-            cur.executemany(INSERT_SENSOR_RECORD_SQL, sr_params)
+            row_count = 0
+            for r in batch.rows:
+                cur.execute(
+                    INSERT_DATASET_SQL,
+                    (batch.job_id, r.timestamp, batch.marker, 0)
+                )
+                dataset_id = int(cur.fetchone()[0])
+
+                val = None if r.tel_speed is None else str(r.tel_speed)
+
+                cur.execute(
+                    INSERT_SENSOR_RECORD_SQL,
+                    (val, SPEED_SENSOR_ID, dataset_id)
+                )
+
+                row_count += 1
+
             self._conn.commit()
+            return QueryResult(row_count=row_count)
+
         except Exception:
             self._conn.rollback()
             raise
-
-        return QueryResult(row_count=len(dataset_params))
-

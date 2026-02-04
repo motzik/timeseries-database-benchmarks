@@ -182,9 +182,9 @@ def run_selected_benchmark(args, db):
 
     if args.benchmark == "insert_10k":
         if args.start_insert_ts is None:
-            raise ValueError("start_ts is required for insert_10k benchmark")
+            raise ValueError("start_insert_ts is required for insert_10k benchmark")
         if args.start_insert_ts < "2026-01-01T00:00:00":
-            raise ValueError("start_ts must be at least in 2026 to avoid conflicts with existing data")
+            raise ValueError("start_insert_ts must be at least in 2026 to avoid conflicts with existing data")
         start_insert_ts = parse_dt(args.start_insert_ts)
         return run_insert_10k(
             db,
