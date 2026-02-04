@@ -16,53 +16,51 @@ JOB_FULL_SQL = """
                """
 
 LAST_N_BY_VEHICLE_SQL = """
-                        SELECT *
-                        FROM dataset
-                        WHERE vehicle_id = ?
-                        ORDER BY timestamp DESC
+                        SELECT d.*
+                        FROM dbo.dataset d
+                                 JOIN dbo.job j ON j.id = d.job_id
+                        WHERE j.vehicle_id = ?
+                        ORDER BY d.[timestamp] DESC
                         OFFSET 0 ROWS FETCH NEXT ? ROWS ONLY;
+
                         """
 
 DASHBOARD_SPEED_10M_SQL = """
-                          SELECT DATEADD(
-                                     minute, (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0) AS bucket,
-                                 AVG(TRY_CAST(telSpeed AS float))                             AS avg_speed
-                          FROM dbo.dataset
-                          WHERE vehicle_id = ?
-                            AND [timestamp] >= ?
-                            AND [timestamp]
+                          SELECT DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0) AS bucket,
+                                 AVG(TRY_CAST(d.telSpeed AS float))                                 AS avg_speed
+                          FROM dbo.dataset d
+                                   JOIN dbo.job j ON j.id = d.job_id
+                          WHERE j.vehicle_id = ?
+                            AND d.[timestamp] >= ?
+                            AND d.[timestamp]
                               < ?
-                          GROUP BY DATEADD(
-                              minute,
-                              (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0)
+                          GROUP BY DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0)
                           ORDER BY bucket ASC;
                           """
 
 DASHBOARD_SPEED_10M_MULTI_SQL = """
-                                SELECT DATEADD(
-                                           minute, (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0) AS bucket,
-                                       vehicle_id                                                     AS vehicle_id,
-                                       AVG(TRY_CAST(telSpeed AS float))                               AS avg_speed
-                                FROM dbo.dataset
-                                WHERE vehicle_id IN ({vehicle_placeholders})
-                                  AND [timestamp] >= ?
-                                  AND [timestamp]
+                                SELECT DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0) AS bucket,
+                                       j.vehicle_id                                                       AS vehicle_id,
+                                       AVG(TRY_CAST(d.telSpeed AS float))                                 AS avg_speed
+                                FROM dbo.dataset d
+                                         JOIN dbo.job j ON j.id = d.job_id
+                                WHERE j.vehicle_id IN ({vehicle_placeholders})
+                                  AND d.[timestamp] >= ?
+                                  AND d.[timestamp]
                                     < ?
-                                GROUP BY DATEADD(
-                                    minute,
-                                    (DATEDIFF(minute, 0, [timestamp]) / 10) * 10, 0),
-                                         vehicle_id
+                                GROUP BY DATEADD(minute, (DATEDIFF(minute, 0, d.[timestamp]) / 10) * 10, 0),
+                                    j.vehicle_id
                                 ORDER BY bucket ASC, vehicle_id ASC;
+
                                 """
 
 INSERT_BATCH_SQL = """
                    INSERT INTO dbo.dataset (job_id,
-                                            vehicle_id,
-                       [ timestamp],
-                       [ type],
+                       [timestamp],
+                       [type],
                                             note,
                                             telSpeed)
-                   VALUES (?, ?, ?, ?, ?, ?);
+                   VALUES (?, ?, ?, ?, ?);
                    """
 
 CREATE_VEHICLE_SQL = """
@@ -77,17 +75,20 @@ CREATE_JOB_SQL = """
                  VALUES (?);
                  """
 
+DELETE_DATASET_BY_VEHICLE_SQL = """
+DELETE d
+FROM dbo.dataset d
+JOIN dbo.job j ON j.id = d.job_id
+WHERE j.vehicle_id = ?;
+"""
+
 DELETE_VEHICLE_SQL = """
-                     DELETE
-                     FROM dbo.dataset
-                     WHERE vehicle_id = ?;
-                     DELETE
-                     FROM dbo.job
-                     WHERE vehicle_id = ?;
                      DELETE
                      FROM dbo.vehicle
                      WHERE id = ?;
                      """
+
+
 
 DELETE_DATASET_SQL = """
                      DELETE
@@ -100,6 +101,17 @@ DELETE_JOB_SQL = """
                  FROM dbo.job
                  WHERE id = ?; \
                  """
+DELETE_VEHICLE_ONLY_SQL = """
+                          DELETE
+                          FROM dbo.vehicle
+                          WHERE id = ?; \
+                          """
+
+DELETE_JOB_BY_VEHICLE_SQL = """
+                            DELETE
+                            FROM dbo.job
+                            WHERE vehicle_id = ?; \
+                            """
 
 
 class MSSQLWideDatabase(Database):
@@ -162,10 +174,10 @@ class MSSQLWideDatabase(Database):
         return QueryResult(row_count=len(rows))
 
     def dashboard_speed_10m_multi(
-        self,
-        vehicle_ids: list[int],
-        start_ts,
-        end_ts,
+            self,
+            vehicle_ids: list[int],
+            start_ts,
+            end_ts,
     ) -> QueryResult:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
@@ -194,7 +206,7 @@ class MSSQLWideDatabase(Database):
         for r in batch.rows:
             # because speed is string in db
             tel_speed_str = None if r.tel_speed is None else str(r.tel_speed)
-            params.append((job_id, vehicle_id, r.timestamp, 0, marker, tel_speed_str))
+            params.append((job_id, r.timestamp, 0, marker, tel_speed_str))
 
         cur = self._conn.cursor()
         cur.fast_executemany = True
@@ -253,5 +265,8 @@ class MSSQLWideDatabase(Database):
         cur = self._conn.cursor()
         cur.execute(DELETE_DATASET_SQL, (job_id,))
         cur.execute(DELETE_JOB_SQL, (job_id,))
-        cur.execute(DELETE_VEHICLE_SQL, (vehicle_id, vehicle_id, vehicle_id))
+        # remove remaining rows for that vehicle (if multiple jobs exist)
+        cur.execute(DELETE_DATASET_BY_VEHICLE_SQL, (vehicle_id,))
+        cur.execute(DELETE_JOB_BY_VEHICLE_SQL, (vehicle_id,))
+        cur.execute(DELETE_VEHICLE_ONLY_SQL, (vehicle_id,))
         self._conn.commit()
