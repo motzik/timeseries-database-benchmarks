@@ -7,47 +7,39 @@ mkdir -p "$RESULTS_DIR"
 
 RUNNER_IMAGE="benchmark-runner:latest"
 
-DBS=(
-  "mssql_narrow"
-  "mssql_wide"
-)
-
-run_one_db () {
-  local db="$1"
-  local deploy_dir="$ROOT_DIR/deploy/$db"
+run_one () {
+  local deploy_dir="$1"   # folder name under deploy/
+  local db_key="$2"       # --db value for runner
 
   echo "=============================="
-  echo "Starting DB: $db"
+  echo "Starting DB: $db_key (deploy/$deploy_dir)"
   echo "=============================="
 
-  pushd "$deploy_dir" >/dev/null
+  pushd "$ROOT_DIR/deploy/$deploy_dir" >/dev/null
 
-  docker compose -p "$db" up -d
+  docker compose -p "$db_key" up -d
 
-  echo "Waiting for DB to become ready..."
-  sleep 10
+  echo "Waiting for DB startup..."
+  sleep 8
 
-  # Run benchmarks
   docker run --rm \
     --network=host \
     -v "$RESULTS_DIR:/app/results" \
-    --env-file "$deploy_dir/.env" \
+    --env-file "$ROOT_DIR/deploy/$deploy_dir/.env" \
     "$RUNNER_IMAGE" \
-    --db "$db" \
-    --benchmarks all \
+    --db "$db_key" \
+    --benchmark all \
     --runs 5 \
-    --warmup 1
+    --warmup 1 \
+    --vehicle-id 46 \
+    --out /app/results/results.csv
 
-  # Stop DB
-  docker compose -p "$db" down -v
+  docker compose -p "$db_key" down -v
 
   popd >/dev/null
-
-  echo "Done: $db"
+  echo "Done: $db_key"
 }
 
-for db in "${DBS[@]}"; do
-  run_one_db "$db"
-done
+run_one "mssql-narrow"     "mssql_narrow"
 
-echo "ALL DONE. Results in: $RESULTS_DIR"
+echo "ALL DONE. Results in $RESULTS_DIR/results.csv"
