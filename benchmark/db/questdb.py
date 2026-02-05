@@ -18,37 +18,39 @@ JOB_FULL_SQL = """
                """
 
 LAST_N_BY_VEHICLE_SQL = """
-                        SELECT *
-                        FROM dataset
-                        WHERE vehicle_id = %s
-                        ORDER BY timestamp DESC
-                            LIMIT %s; \
+                        SELECT d.*
+                        FROM dataset d
+                                 JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                        WHERE j.vehicle_id = %s
+                        ORDER BY d.timestamp DESC
+                            LIMIT %s;
+
                         """
 
 DASHBOARD_SPEED_10M_SQL = """
-                          SELECT
-                              timestamp AS bucket, avg (telSpeed) AS avg_speed
-                          FROM dataset
-                          WHERE vehicle_id = %s
-                            AND timestamp >= %s
-                            AND timestamp
-                              < %s
-                              SAMPLE BY 10m
-                              ALIGN TO CALENDAR
-                          ORDER BY bucket ASC; \
+                          SELECT d.timestamp     AS bucket,
+                                 avg(d.telSpeed) AS avg_speed
+                          FROM dataset d
+                                   JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                          WHERE j.vehicle_id = %s
+                            AND d.timestamp >= %s
+                            AND d.timestamp < %s SAMPLE BY 10m ALIGN TO CALENDAR
+                          ORDER BY bucket ASC;
+
                           """
 
 DASHBOARD_SPEED_10M_MULTI_SQL = """
-                                SELECT timestamp_floor('10m', timestamp) AS bucket,
-                                       vehicle_id                        AS vehicle_id,
-                                       avg(telSpeed)                     AS avg_speed
-                                FROM dataset
-                                WHERE vehicle_id IN ({vehicle_placeholders})
-                                  AND timestamp >= %s
-                                  AND timestamp
-                                    < %s
+                                SELECT timestamp_floor('10m', d.timestamp) AS bucket,
+                                       j.vehicle_id                        AS vehicle_id,
+                                       avg(d.telSpeed)                     AS avg_speed
+                                FROM dataset d
+                                         JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                                WHERE j.vehicle_id IN ({vehicle_placeholders})
+                                  AND d.timestamp >= %s
+                                  AND d.timestamp < %s
                                 GROUP BY bucket, vehicle_id
-                                ORDER BY bucket ASC, vehicle_id ASC; \
+                                ORDER BY bucket ASC, vehicle_id ASC;
+
                                 """
 
 
@@ -124,10 +126,10 @@ class QuestDBDatabase(Database):
         return QueryResult(row_count=len(rows))
 
     def dashboard_speed_10m_multi(
-        self,
-        vehicle_ids: list[int],
-        start_ts,
-        end_ts,
+            self,
+            vehicle_ids: list[int],
+            start_ts,
+            end_ts,
     ) -> QueryResult:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
@@ -141,15 +143,14 @@ class QuestDBDatabase(Database):
         rows = cur.fetchall()
         return QueryResult(row_count=len(rows))
 
-
-    def create_new_vehicle(self) -> int:
+    def create_new_vehicle(self) -> str:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
 
         cur = self._conn.cursor()
         try:
-            new_id = _next_id(cur, "vehicle")
-            name = f"bench_vehicle_{uuid4().hex}"
+            new_id = uuid4().hex
+            name = f"bench_vehicle_{new_id}"
             cur.execute(
                 "INSERT INTO vehicle (id, name) VALUES (%s, %s);",
                 (new_id, name),
@@ -162,16 +163,16 @@ class QuestDBDatabase(Database):
         finally:
             cur.close()
 
-    def create_new_job(self, vehicle_id: int) -> int:
+    def create_new_job(self, vehicle_id: str) -> str:
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
 
         cur = self._conn.cursor()
         try:
-            new_id = _next_id(cur, "job")
+            new_id = uuid4().hex
             cur.execute(
                 "INSERT INTO job (id, vehicle_id) VALUES (%s, %s);",
-                (new_id, vehicle_id),
+                (new_id, str(vehicle_id)),
             )
             self._conn.commit()
             return new_id
@@ -182,6 +183,7 @@ class QuestDBDatabase(Database):
             cur.close()
 
     def clean_data(self, vehicle_id: int, job_id: int) -> None:
+        return
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
 
@@ -194,7 +196,6 @@ class QuestDBDatabase(Database):
                         CREATE TABLE dataset_new
                         (
                             timestamp  TIMESTAMP,
-                            vehicle_id SYMBOL,
                             job_id     SYMBOL,
                             telPulseCounterDin1 DOUBLE,
                             telPulseCounterDin2 DOUBLE,
@@ -252,7 +253,7 @@ class QuestDBDatabase(Database):
         for r in batch.rows:
             ts_ns = int(r.timestamp.timestamp() * 1_000_000_000)
             line = (
-                f"{table},job_id={batch.job_id},vehicle_id={batch.vehicle_id} "
+                f"{table},job_id={batch.job_id} "
                 f"telSpeed={r.tel_speed} {ts_ns}"
             )
             lines.append(line)
@@ -273,8 +274,3 @@ class QuestDBDatabase(Database):
 
         if resp.status_code != 204:
             raise RuntimeError(f"ILP insert failed: {resp.status_code} {resp.text}")
-
-
-def _next_id(cur, table: str) -> int:
-    cur.execute(f"SELECT COALESCE(MAX(id), 0) + 1 FROM {table};")
-    return int(cur.fetchone()[0])

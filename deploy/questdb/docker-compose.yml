@@ -1,0 +1,19 @@
+services:
+  questdb:
+    image: questdb-benchmark:with-data-v2
+    container_name: questdb
+    ports:
+      - "9000:9000"   # Web Console + REST
+      - "8812:8812"   # Postgres wire (psycopg2)
+      - "9009:9009"   # ILP TCP (optional)
+
+  benchmark:
+    image: benchmark-runner:latest
+    depends_on:
+      - questdb
+    environment:
+      QUESTDB_HOST: questdb
+      QUESTDB_PG_PORT: 8812
+      QUESTDB_HTTP_PORT: 9000
+      QUESTDB_PORT: 8812
+
