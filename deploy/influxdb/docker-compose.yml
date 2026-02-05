@@ -1,21 +1,28 @@
-version: "3.9"
-
 services:
   influxdb:
-    image: influxdb:2.7
-    container_name: influxdb-benchmark
-    restart: unless-stopped
+    image: influxdb:2
+    container_name: influx-db-benchmark
     ports:
       - "8086:8086"
-    environment:
-      DOCKER_INFLUXDB_INIT_MODE: "setup"
-      DOCKER_INFLUXDB_INIT_USERNAME: "${INFLUXDB_USER}"
-      DOCKER_INFLUXDB_INIT_PASSWORD: "${INFLUXDB_PASSWORD}"
-      DOCKER_INFLUXDB_INIT_ORG: "${INFLUXDB_ORG}"
-      DOCKER_INFLUXDB_INIT_BUCKET: "${INFLUXDB_BUCKET}"
-      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: "${INFLUXDB_TOKEN}"
+    volumes:
+      - /root/images/influx/influxdb2-data:/var/lib/influxdb2
+      - /root/images/influx/influxdb2-config:/etc/influxdb2
+    restart: unless-stopped
     healthcheck:
       test: [ "CMD", "influx", "ping", "--host", "http://localhost:8086" ]
       interval: 5s
       timeout: 3s
       retries: 20
+  benchmark:
+    image: benchmark-runner:latest
+    container_name: benchmark-runner-influx
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    environment:
+      INFLUXDB_URL: http://influxdb:8086
+      INFLUXDB_TOKEN: "${INFLUXDB_TOKEN}"
+      INFLUXDB_ORG: "${INFLUXDB_ORG}"
+      INFLUXDB_BUCKET: "${INFLUXDB_BUCKET}"
+    restart: "no"
+

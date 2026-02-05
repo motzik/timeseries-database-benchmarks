@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   mssql:
-    image: mssql-benchmark:with-data
+    image: mssql-narrow-benchmark:with-data-v2
     container_name: mssql-narrow
     environment:
       ACCEPT_EULA: "Y"

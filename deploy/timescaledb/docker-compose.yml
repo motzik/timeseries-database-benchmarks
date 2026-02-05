@@ -1,19 +1,44 @@
-version: "3.9"
-
 services:
-  timescaledb:
+  tsdb-init:
+    image: alpine:3.19
+    container_name: tsdb-init
+    volumes:
+      - tsdb_data:/var/lib/postgresql/data
+      - /root/images:/backup:ro
+    command: >
+      sh -c "
+      if [ ! -f /var/lib/postgresql/data/PG_VERSION ]; then
+        echo 'PG_VERSION not found -> restoring from tar...';
+        rm -rf /var/lib/postgresql/data/* /var/lib/postgresql/data/.[!.]* /var/lib/postgresql/data/..?* 2>/dev/null || true;
+        tar -xf /backup/tsdb_data.tar -C /var/lib/postgresql/data;
+        echo 'Restore done.';
+      else
+        echo 'PG_VERSION found -> already initialized, skipping.';
+      fi
+      "
+    restart: "no"
+
+  tsdb:
     image: timescaledb-benchmark:with-data
-    container_name: timescaledb-benchmark
-    restart: unless-stopped
+    container_name: tsdb
+    depends_on:
+      tsdb-init:
+        condition: service_completed_successfully
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: telemetry
+      TZ: Europe/Vienna
     ports:
       - "5432:5432"
-    environment:
-      POSTGRES_USER: "${TIMESCALEDB_USER}"
-      POSTGRES_PASSWORD: "${TIMESCALEDB_PASSWORD}"
-      POSTGRES_DB: "${TIMESCALEDB_DB}"
-      TZ: Europe/Vienna
+    volumes:
+      - tsdb_data:/var/lib/postgresql/data
+    restart: unless-stopped
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
       interval: 5s
       timeout: 3s
       retries: 20
+
+volumes:
+  tsdb_data:

@@ -1,8 +1,6 @@
-version: "3.9"
-
 services:
   mssql:
-    image: mcr.microsoft.com/mssql/server:2022-latest
+    image: mssql-wide-benchmark:with-data-v2
     container_name: mssql-wide
     environment:
       ACCEPT_EULA: "Y"
