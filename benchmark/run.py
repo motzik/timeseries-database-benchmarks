@@ -18,6 +18,7 @@ from benchmark.db.mssql_narrow import MSSQLNarrowDatabase
 from benchmark.db.mssql_wide import MSSQLWideDatabase
 from benchmark.db.questdb import QuestDBConfig, QuestDBDatabase
 from benchmark.db.timescaledb import TimescaleDBConfig, TimescaleDBDatabase
+from benchmark.db.influxdb import InfluxDBConfig, InfluxDBDatabase
 
 BENCHMARK_CHOICES = [
     "job_full",
@@ -80,13 +81,17 @@ def load_db(db_name: str):
         cfg = TimescaleDBConfig.from_env(prefix="TIMESCALEDB")
         db = TimescaleDBDatabase(cfg)
         return db
+    if db_name == "influxdb":
+        cfg = InfluxDBConfig.from_env(prefix="INFLUXDB")
+        db = InfluxDBDatabase(cfg)
+        return db
     else:
         raise ValueError(f"Unsupported db: {db_name}")
 
 
 def main() -> int:
     p = argparse.ArgumentParser()
-    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb"])
+    p.add_argument("--db", required=True, choices=["mssql_narrow", "mssql_wide", "questdb", "timescaledb", "influxdb"])
     p.add_argument(
         "--benchmark",
         choices=["all", *BENCHMARK_CHOICES],
