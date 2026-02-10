@@ -10,7 +10,7 @@ from influxdb_client import InfluxDBClient, WritePrecision
 from influxdb_client.client.query_api import QueryApi
 from influxdb_client.client.write_api import WriteApi, SYNCHRONOUS
 
-from benchmark.db.base import Database, InsertBatch, QueryResult
+from benchmark.db.base import BATCH_SIZE, Database, InsertBatch, QueryResult
 
 JOB_FULL_FLUX = """
 from(bucket: "{bucket}")
@@ -184,13 +184,15 @@ class InfluxDBDatabase(Database):
                 f"{timestamp_ns}"
             )
 
-        payload = "\n".join(lines)
-        write_api.write(
-            bucket=self.config.bucket,
-            org=self.config.org,
-            record=payload,
-            write_precision=WritePrecision.NS,
-        )
+        for i in range(0, len(lines), BATCH_SIZE):
+            payload = "\n".join(lines[i:i + BATCH_SIZE])
+            write_api.write(
+                bucket=self.config.bucket,
+                org=self.config.org,
+                record=payload,
+                write_precision=WritePrecision.NS,
+            )
+
         return QueryResult(row_count=len(batch.rows))
 
     def clean_data(self, vehicle_id: int, job_id: int) -> None:

@@ -4,6 +4,9 @@ from dataclasses import dataclass
 from datetime import datetime
 
 
+BATCH_SIZE = 500
+
+
 @dataclass(frozen=True)
 class QueryResult:
     """Result metadata returned by database adapters"""

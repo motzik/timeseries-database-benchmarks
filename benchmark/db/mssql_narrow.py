@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 import pyodbc
-from benchmark.db.base import Database, QueryResult
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult
 from benchmark.db.mssql_config import MSSQLConfig
 
 JOB_FULL_SQL = """
@@ -80,11 +80,12 @@ DASHBOARD_SPEED_10M_MULTI_SQL = """
                                 ORDER BY bucket ASC, j.vehicle_id ASC;
                                 """
 
-INSERT_DATASET_SQL = """
-                     INSERT INTO dbo.dataset (job_id, [timestamp], note, type)
-                         OUTPUT INSERTED.id
-                     VALUES (?, ?, ?, ?); \
-                     """
+INSERT_DATASET_VALUES_SQL_TEMPLATE = """
+                                     INSERT INTO dbo.dataset (job_id, [timestamp], note, type)
+                                     OUTPUT INSERTED.id
+                                     VALUES {values};
+                                     """
+
 
 INSERT_SENSOR_RECORD_SQL = """
                            INSERT INTO dbo.sensor_record (value, sensor_id, dataset_id)
@@ -268,28 +269,36 @@ class MSSQLNarrowDatabase(Database):
         if not batch.rows:
             return QueryResult(row_count=0)
 
-        SPEED_SENSOR_ID = 45
+        speed_sensor_id = 45
         cur = self._conn.cursor()
+        cur.fast_executemany = True
 
         try:
             row_count = 0
-            for r in batch.rows:
-                cur.execute(
-                    INSERT_DATASET_SQL,
-                    (batch.job_id, r.timestamp, batch.marker, 0)
-                )
-                dataset_id = int(cur.fetchone()[0])
+            for i in range(0, len(batch.rows), BATCH_SIZE):
+                chunk = batch.rows[i:i + BATCH_SIZE]
+                values_placeholders = ", ".join(["(?, ?, ?, ?)"] * len(chunk))
+                insert_dataset_sql = INSERT_DATASET_VALUES_SQL_TEMPLATE.format(values=values_placeholders)
 
-                val = None if r.tel_speed is None else str(r.tel_speed)
+                dataset_insert_params = []
+                for row in chunk:
+                    dataset_insert_params.extend((batch.job_id, row.timestamp, batch.marker, 0))
 
-                cur.execute(
-                    INSERT_SENSOR_RECORD_SQL,
-                    (val, SPEED_SENSOR_ID, dataset_id)
-                )
+                cur.execute(insert_dataset_sql, tuple(dataset_insert_params))
+                inserted_dataset_ids = [int(inserted_row[0]) for inserted_row in cur.fetchall()]
 
-                row_count += 1
+                if len(inserted_dataset_ids) != len(chunk):
+                    raise RuntimeError("Unexpected dataset id count returned from batched insert.")
 
-            self._conn.commit()
+                sensor_params = []
+                for row, dataset_id in zip(chunk, inserted_dataset_ids):
+                    tel_speed = None if row.tel_speed is None else str(row.tel_speed)
+                    sensor_params.append((tel_speed, speed_sensor_id, dataset_id))
+
+                cur.executemany(INSERT_SENSOR_RECORD_SQL, sensor_params)
+                self._conn.commit()
+                row_count += len(chunk)
+
             return QueryResult(row_count=row_count)
 
         except Exception:

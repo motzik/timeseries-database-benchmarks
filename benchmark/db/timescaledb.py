@@ -9,7 +9,7 @@ from uuid import uuid4
 import psycopg2
 from psycopg2.extras import execute_values
 
-from benchmark.db.base import Database, QueryResult, InsertBatch
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult, InsertBatch
 
 JOB_FULL_SQL = """
                SELECT *
@@ -240,13 +240,15 @@ class TimescaleDBDatabase(Database):
 
         with self._conn.cursor() as cur:
             try:
-                execute_values(
-                    cur,
-                    INSERT_BATCH_SQL,
-                    values,
-                    page_size=1000,
-                )
-                self._conn.commit()
+                for i in range(0, len(values), BATCH_SIZE):
+                    chunk = values[i:i + BATCH_SIZE]
+                    execute_values(
+                        cur,
+                        INSERT_BATCH_SQL,
+                        chunk,
+                        page_size=BATCH_SIZE,
+                    )
+                    self._conn.commit()
             except Exception:
                 self._conn.rollback()
                 raise

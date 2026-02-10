@@ -5,7 +5,7 @@ from uuid import uuid4
 
 import pyodbc
 
-from benchmark.db.base import Database, QueryResult
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult
 from benchmark.db.mssql_config import MSSQLConfig
 
 JOB_FULL_SQL = """
@@ -201,10 +201,8 @@ class MSSQLWideDatabase(Database):
         params: list[tuple] = []
         marker = batch.marker
         job_id = batch.job_id
-        vehicle_id = batch.vehicle_id
 
         for r in batch.rows:
-            # because speed is string in db
             tel_speed_str = None if r.tel_speed is None else str(r.tel_speed)
             params.append((job_id, r.timestamp, 0, marker, tel_speed_str))
 
@@ -212,8 +210,10 @@ class MSSQLWideDatabase(Database):
         cur.fast_executemany = True
 
         try:
-            cur.executemany(INSERT_BATCH_SQL, params)
-            self._conn.commit()
+            for i in range(0, len(params), BATCH_SIZE):
+                chunk = params[i:i + BATCH_SIZE]
+                cur.executemany(INSERT_BATCH_SQL, chunk)
+                self._conn.commit()
         except Exception:
             self._conn.rollback()
             raise

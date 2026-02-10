@@ -8,7 +8,7 @@ from uuid import uuid4
 import psycopg2
 import requests
 
-from benchmark.db.base import Database, QueryResult, InsertBatch
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult, InsertBatch
 
 JOB_FULL_SQL = """
                SELECT *
@@ -259,18 +259,20 @@ class QuestDBDatabase(Database):
             lines.append(line)
 
         url = "http://localhost:9000/write?precision=ns"
-        payload = "\n".join(lines) + "\n"
+        headers = {
+            "Content-Type": "text/plain; charset=utf-8",
+            "Connection": "close",
+        }
 
-        resp = requests.post(
-            url,
-            data=payload.encode("utf-8"),
-            headers={
-                "Content-Type": "text/plain; charset=utf-8",
-                "Connection": "close",
-            },
-            timeout=(5, 30),
-        )
-        resp.raise_for_status()
+        for i in range(0, len(lines), BATCH_SIZE):
+            payload = "\n".join(lines[i:i + BATCH_SIZE]) + "\n"
+            resp = requests.post(
+                url,
+                data=payload.encode("utf-8"),
+                headers=headers,
+                timeout=(5, 30),
+            )
+            resp.raise_for_status()
 
-        if resp.status_code != 204:
-            raise RuntimeError(f"ILP insert failed: {resp.status_code} {resp.text}")
+            if resp.status_code != 204:
+                raise RuntimeError(f"ILP insert failed: {resp.status_code} {resp.text}")
