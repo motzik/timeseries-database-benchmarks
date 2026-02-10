@@ -29,7 +29,7 @@ def run_dashboard_speed_10m(
     t1 = perf_counter_ns()
 
     return BenchmarkRun(
-        benchmark="dashboard_speed_1m",
+        benchmark="dashboard_speed_10m",
         db=db_name,
         params={
             "vehicle_id": vehicle_id,
