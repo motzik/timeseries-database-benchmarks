@@ -7,14 +7,34 @@ services:
       MSSQL_SA_PASSWORD: "${MSSQL_WIDE_PASSWORD}"
     ports:
       - "1433:1433"
+    mem_limit: 16g
+    cpus: 4
+
+  mssql-init:
+    image: mcr.microsoft.com/mssql-tools:latest
+    depends_on:
+      - mssql
+    volumes:
+      - ./mssql-init.sql:/mssql-init.sql:ro
+    entrypoint: ["/bin/bash", "-lc"]
+    command: >
+      "for i in {1..60}; do
+         /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P \"$MSSQL_WIDE_PASSWORD\" -C -Q \"SELECT 1\" && break;
+         echo 'waiting for mssql...';
+         sleep 2;
+       done;
+       /opt/mssql-tools/bin/sqlcmd -S mssql -U sa -P \"$MSSQL_WIDE_PASSWORD\" -C -i /mssql-init.sql"
 
   benchmark:
     image: benchmark-runner:latest
     depends_on:
       - mssql
+      - mssql-init
     environment:
       MSSQL_HOST: mssql
       MSSQL_PORT: 1433
       MSSQL_DB: telemetry
       MSSQL_USER: sa
       MSSQL_PASSWORD: "${MSSQL_WIDE_PASSWORD}"
+    mem_limit: 2g
+    cpus: 2

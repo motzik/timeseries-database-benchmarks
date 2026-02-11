@@ -8,6 +8,8 @@ services:
       - /root/images/influx/influxdb2-data:/var/lib/influxdb2
       - /root/images/influx/influxdb2-config:/etc/influxdb2
     restart: unless-stopped
+    mem_limit: 16g
+    cpus: 4
     healthcheck:
       test: [ "CMD", "influx", "ping", "--host", "http://localhost:8086" ]
       interval: 5s
@@ -25,4 +27,5 @@ services:
       INFLUXDB_ORG: "${INFLUXDB_ORG}"
       INFLUXDB_BUCKET: "${INFLUXDB_BUCKET}"
     restart: "no"
-
+    mem_limit: 2g
+    cpus: 2

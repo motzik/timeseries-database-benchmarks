@@ -10,6 +10,8 @@ services:
       nofile:
         soft: 1048576
         hard: 1048576
+    mem_limit: 16g
+    cpus: 4
 
   benchmark:
     image: benchmark-runner:latest
@@ -20,4 +22,5 @@ services:
       QUESTDB_PG_PORT: 8812
       QUESTDB_HTTP_PORT: 9000
       QUESTDB_PORT: 8812
-
+    mem_limit: 2g
+    cpus: 2
