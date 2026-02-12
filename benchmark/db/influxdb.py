@@ -28,8 +28,8 @@ from(bucket: "{bucket}")
   |> filter(fn: (r) => r["_field"] == "telSpeed")
   |> filter(fn: (r) => r["vehicle_id"] == "{vehicle_id}")
   |> group(columns: [])
-  |> sort(columns: ["_time"], desc: true)
-  |> limit(n: {n})
+  |> top(n: {n}, columns: ["_time"])
+  |> sort(columns: ["_time"], desc: false)
 """
 
 DASHBOARD_SPEED_10M_FLUX = """
@@ -48,8 +48,7 @@ from(bucket: "{bucket}")
   |> range(start: time(v: "{start_ts}"), stop: time(v: "{end_ts}"))
   |> filter(fn: (r) => r["_measurement"] == "{measurement}")
   |> filter(fn: (r) => r["_field"] == "telSpeed")
-  |> filter(fn: (r) => contains(value: r["vehicle_id"], set: {vehicle_ids}))
-  |> group(columns: ["vehicle_id"])
+  |> filter(fn: (r) => {vehicle_filter})
   |> aggregateWindow(every: 10m, fn: mean, createEmpty: false)
   |> keep(columns: ["_time", "_value", "vehicle_id"])
   |> sort(columns: ["_time", "vehicle_id"], desc: false)
@@ -144,19 +143,21 @@ class InfluxDBDatabase(Database):
         return QueryResult(row_count=row_count)
 
     def dashboard_speed_10m_multi(
-        self,
-        vehicle_ids: list[int],
-        start_ts: datetime,
-        end_ts: datetime,
+            self,
+            vehicle_ids: list[int],
+            start_ts: datetime,
+            end_ts: datetime,
     ) -> QueryResult:
         query_api = self._require_query_api()
         vehicle_id_set = "[" + ", ".join([f"\"{vehicle_id}\"" for vehicle_id in vehicle_ids]) + "]"
+        vehicle_filter = " or ".join([f'r["vehicle_id"] == "{vid}"' for vid in vehicle_ids])
         flux_query = DASHBOARD_SPEED_10M_MULTI_FLUX.format(
             bucket=self.config.bucket,
             measurement=self.config.measurement,
             vehicle_ids=vehicle_id_set,
             start_ts=_to_rfc3339(start_ts),
             end_ts=_to_rfc3339(end_ts),
+            vehicle_filter=vehicle_filter,
         )
         result = query_api.query(flux_query)
         row_count = _count_records(result)
