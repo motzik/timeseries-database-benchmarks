@@ -20,7 +20,7 @@ JOB_FULL_SQL = """
 LAST_N_BY_VEHICLE_SQL = """
                         SELECT d.*
                         FROM dataset d
-                                 JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                                 JOIN job j ON d.job_id = j.id
                         WHERE j.vehicle_id = %s
                         ORDER BY d.timestamp DESC
                             LIMIT %s;
@@ -31,7 +31,7 @@ DASHBOARD_SPEED_10M_SQL = """
                           SELECT d.timestamp     AS bucket,
                                  avg(d.telSpeed) AS avg_speed
                           FROM dataset d
-                                   JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                                   JOIN job j ON d.job_id = j.id
                           WHERE j.vehicle_id = %s
                             AND d.timestamp >= %s
                             AND d.timestamp < %s SAMPLE BY 10m ALIGN TO CALENDAR
@@ -44,7 +44,7 @@ DASHBOARD_SPEED_10M_MULTI_SQL = """
                                        j.vehicle_id                        AS vehicle_id,
                                        avg(d.telSpeed)                     AS avg_speed
                                 FROM dataset d
-                                         JOIN job j ON d.job_id = CAST(j.id AS SYMBOL)
+                                         JOIN job j ON d.job_id = j.id
                                 WHERE j.vehicle_id IN ({vehicle_placeholders})
                                   AND d.timestamp >= %s
                                   AND d.timestamp < %s
@@ -195,8 +195,8 @@ class QuestDBDatabase(Database):
             cur.execute("""
                         CREATE TABLE dataset_new
                         (
-                            timestamp  TIMESTAMP,
-                            job_id     SYMBOL,
+                            timestamp TIMESTAMP,
+                            job_id    SYMBOL,
                             telPulseCounterDin1 DOUBLE,
                             telPulseCounterDin2 DOUBLE,
                             telTotalOdometer DOUBLE,
