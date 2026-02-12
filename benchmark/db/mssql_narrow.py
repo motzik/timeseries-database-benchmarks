@@ -25,7 +25,7 @@ JOB_FULL_SQL = """
 LAST_N_BY_VEHICLE_SQL = """
                         WITH last_ds AS (SELECT TOP(?) d.id, d.[timestamp]
                         FROM dbo.dataset d
-                            LEFT JOIN dbo.job j
+                            INNER JOIN dbo.job j
                         ON j.id = d.job_id
                         WHERE j.vehicle_id = ?
                         ORDER BY d.[timestamp] DESC, d.id DESC
@@ -37,11 +37,11 @@ LAST_N_BY_VEHICLE_SQL = """
                         ON sr.dataset_id = d.id
                             LEFT JOIN dbo.sensor s
                             ON s.id = sr.sensor_id
+                        WHERE sr.sensor_id = 45
                         ORDER BY
-                            d.timestamp DESC,
+                            d.[timestamp] DESC,
                             d.id DESC,
-                            sr.sensor_id ASC; \
- \
+                            sr.sensor_id ASC;
                         """
 
 DASHBOARD_SPEED_10M_SQL = """
