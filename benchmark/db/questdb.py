@@ -8,7 +8,7 @@ from uuid import uuid4
 import psycopg2
 import requests
 
-from benchmark.db.base import BATCH_SIZE, Database, QueryResult, InsertBatch
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult, InsertBatch, SENSOR_FIELDS
 
 JOB_FULL_SQL = """
                SELECT *
@@ -183,7 +183,6 @@ class QuestDBDatabase(Database):
             cur.close()
 
     def clean_data(self, vehicle_id: int, job_id: int) -> None:
-        return
         if self._conn is None:
             raise RuntimeError("Database connection is not established.")
 
@@ -237,24 +236,27 @@ class QuestDBDatabase(Database):
             cur.close()
 
     def insert_batch(self, batch: InsertBatch) -> QueryResult:
-        self.ilp_insert_batch(
+        inserted_rows = self.ilp_insert_batch(
             table="dataset",
             batch=batch
         )
-        return QueryResult(row_count=len(batch.rows))
+        return QueryResult(row_count=inserted_rows)
 
     # TODO: clean up this implementation
     def ilp_insert_batch(
             self,
             table: str,
             batch: InsertBatch,
-    ):
+    ) -> int:
         lines = []
         for r in batch.rows:
             ts_ns = int(r.timestamp.timestamp() * 1_000_000_000)
+            fields = _format_ilp_fields(r.sensors)
+            if not fields:
+                continue
             line = (
                 f"{table},job_id={batch.job_id} "
-                f"telSpeed={r.tel_speed} {ts_ns}"
+                f"{fields} {ts_ns}"
             )
             lines.append(line)
 
@@ -276,3 +278,17 @@ class QuestDBDatabase(Database):
 
             if resp.status_code != 204:
                 raise RuntimeError(f"ILP insert failed: {resp.status_code} {resp.text}")
+
+        return len(lines)
+
+
+def _format_ilp_fields(sensors: dict[str, Optional[float]]) -> str:
+    encoded_fields: list[str] = []
+    for sensor_name in SENSOR_FIELDS:
+        sensor_value = sensors.get(sensor_name)
+        if sensor_value is None:
+            # Line protocol has no NULL representation, so we omit the field.
+            continue
+        encoded_fields.append(f"{sensor_name}={sensor_value}")
+
+    return ",".join(encoded_fields)

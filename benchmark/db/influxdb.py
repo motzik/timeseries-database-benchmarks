@@ -3,14 +3,14 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any, Optional
+from typing import Any, Mapping, Optional
 from uuid import uuid4
 
 from influxdb_client import InfluxDBClient, WritePrecision
 from influxdb_client.client.query_api import QueryApi
 from influxdb_client.client.write_api import WriteApi, SYNCHRONOUS
 
-from benchmark.db.base import BATCH_SIZE, Database, InsertBatch, QueryResult
+from benchmark.db.base import BATCH_SIZE, Database, InsertBatch, QueryResult, SENSOR_FIELDS
 
 JOB_FULL_FLUX = """
 from(bucket: "{bucket}")
@@ -177,11 +177,14 @@ class InfluxDBDatabase(Database):
         lines = []
         for row in batch.rows:
             timestamp_ns = int(row.timestamp.timestamp() * 1_000_000_000)
+            fields = _format_ilp_fields(row.sensors)
+            if not fields:
+                continue
             lines.append(
                 f"{self.config.measurement},"
                 f"job_id={batch.job_id},"
                 f"vehicle_id={batch.vehicle_id} "
-                f"telSpeed={row.tel_speed} "
+                f"{fields} "
                 f"{timestamp_ns}"
             )
 
@@ -194,7 +197,7 @@ class InfluxDBDatabase(Database):
                 write_precision=WritePrecision.NS,
             )
 
-        return QueryResult(row_count=len(batch.rows))
+        return QueryResult(row_count=len(lines))
 
     def clean_data(self, vehicle_id: int, job_id: int) -> None:
         if self._client is None:
@@ -241,3 +244,15 @@ def _count_records(query_result) -> int:
     for table in query_result:
         count += len(table.records)
     return count
+
+
+def _format_ilp_fields(sensors: Mapping[str, Optional[float]]) -> str:
+    encoded_fields: list[str] = []
+    for sensor_name in SENSOR_FIELDS:
+        sensor_value = sensors.get(sensor_name)
+        if sensor_value is None:
+            # Influx line protocol has no NULL representation, so we omit explicit NULLs.
+            continue
+        encoded_fields.append(f"{sensor_name}={sensor_value}")
+
+    return ",".join(encoded_fields)

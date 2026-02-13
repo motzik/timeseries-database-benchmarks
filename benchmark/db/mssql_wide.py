@@ -59,8 +59,19 @@ INSERT_BATCH_SQL = """
                        [timestamp],
                        [type],
                                             note,
+                                            telAltitude,
+                                            telAngle,
+                                            telExternalVoltage,
+                                            telLatitude,
+                                            telLongitude,
+                                            telMovement,
+                                            telPulseCounterDin1,
+                                            telPulseCounterDin2,
+                                            telSattelites,
+                                            telSleepMode,
+                                            telTotalOdometer,
                                             telSpeed)
-                   VALUES (?, ?, ?, ?, ?);
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?);
                    """
 
 CREATE_VEHICLE_SQL = """
@@ -203,8 +214,25 @@ class MSSQLWideDatabase(Database):
         job_id = batch.job_id
 
         for r in batch.rows:
-            tel_speed_str = None if r.tel_speed is None else str(r.tel_speed)
-            params.append((job_id, r.timestamp, 0, marker, tel_speed_str))
+            sensors = r.sensors
+            params.append((
+                job_id,
+                r.timestamp,
+                0,
+                marker,
+                sensors.get("telAltitude"),
+                sensors.get("telAngle"),
+                sensors.get("telExternalVoltage"),
+                sensors.get("telLatitude"),
+                sensors.get("telLongitude"),
+                sensors.get("telMovement"),
+                sensors.get("telPulseCounterDin1"),
+                sensors.get("telPulseCounterDin2"),
+                sensors.get("telSattelites"),
+                sensors.get("telSleepMode"),
+                sensors.get("telTotalOdometer"),
+                sensors.get("telSpeed"),
+            ))
 
         cur = self._conn.cursor()
         cur.fast_executemany = True

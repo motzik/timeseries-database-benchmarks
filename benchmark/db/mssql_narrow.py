@@ -4,7 +4,7 @@ from typing import Optional
 from datetime import datetime
 
 import pyodbc
-from benchmark.db.base import BATCH_SIZE, Database, QueryResult
+from benchmark.db.base import BATCH_SIZE, Database, QueryResult, SENSOR_FIELDS
 from benchmark.db.mssql_config import MSSQLConfig
 
 JOB_FULL_SQL = """
@@ -92,11 +92,18 @@ INSERT_SENSOR_RECORD_SQL = """
                            VALUES (?, ?, ?); \
                            """
 
+SELECT_SENSOR_IDS_SQL = """
+                        SELECT id, name
+                        FROM dbo.sensor
+                        WHERE name IN ({placeholders});
+                        """
+
 
 class MSSQLNarrowDatabase(Database):
     def __init__(self, config: MSSQLConfig):
         self.config = config
         self._conn: Optional[pyodbc.Connection] = None
+        self._sensor_ids_by_name: Optional[dict[str, int]] = None
 
     def connect(self) -> None:
         if self._conn is not None:
@@ -269,7 +276,7 @@ class MSSQLNarrowDatabase(Database):
         if not batch.rows:
             return QueryResult(row_count=0)
 
-        speed_sensor_id = 45
+        sensor_ids_by_name = self._load_sensor_ids()
         cur = self._conn.cursor()
         cur.fast_executemany = True
 
@@ -292,10 +299,15 @@ class MSSQLNarrowDatabase(Database):
 
                 sensor_params = []
                 for row, dataset_id in zip(chunk, inserted_dataset_ids):
-                    tel_speed = None if row.tel_speed is None else str(row.tel_speed)
-                    sensor_params.append((tel_speed, speed_sensor_id, dataset_id))
+                    for sensor_name, sensor_value in row.sensors.items():
+                        sensor_id = sensor_ids_by_name.get(sensor_name)
+                        if sensor_id is None:
+                            continue
+                        value = None if sensor_value is None else str(sensor_value)
+                        sensor_params.append((value, sensor_id, dataset_id))
 
-                cur.executemany(INSERT_SENSOR_RECORD_SQL, sensor_params)
+                if sensor_params:
+                    cur.executemany(INSERT_SENSOR_RECORD_SQL, sensor_params)
                 self._conn.commit()
                 row_count += len(chunk)
 
@@ -304,3 +316,21 @@ class MSSQLNarrowDatabase(Database):
         except Exception:
             self._conn.rollback()
             raise
+
+    def _load_sensor_ids(self) -> dict[str, int]:
+        if self._conn is None:
+            raise RuntimeError("Database connection is not established.")
+
+        if self._sensor_ids_by_name is not None:
+            return self._sensor_ids_by_name
+
+        sensor_names = list(SENSOR_FIELDS)
+
+        placeholders = ", ".join(["?"] * len(sensor_names))
+        sql = SELECT_SENSOR_IDS_SQL.format(placeholders=placeholders)
+
+        cur = self._conn.cursor()
+        cur.execute(sql, sensor_names)
+        self._sensor_ids_by_name = {str(name): int(sensor_id) for sensor_id, name in cur.fetchall()}
+
+        return self._sensor_ids_by_name

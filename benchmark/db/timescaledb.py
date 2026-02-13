@@ -65,6 +65,17 @@ INSERT_BATCH_SQL = """
                    INSERT INTO public.dataset (timestamp,
                                                vehicle_id,
                                                job_id,
+                                               telAltitude,
+                                               telAngle,
+                                               telExternalVoltage,
+                                               telLatitude,
+                                               telLongitude,
+                                               telMovement,
+                                               telPulseCounterDin1,
+                                               telPulseCounterDin2,
+                                               telSattelites,
+                                               telSleepMode,
+                                               telTotalOdometer,
                                                telspeed,
                                                string)
                    VALUES %s; \
@@ -230,11 +241,23 @@ class TimescaleDBDatabase(Database):
 
         values: list[tuple] = []
         for r in batch.rows:
+            sensors = r.sensors
             values.append((
                 r.timestamp,
                 batch.vehicle_id,
                 batch.job_id,
-                r.tel_speed,
+                sensors.get("telAltitude"),
+                sensors.get("telAngle"),
+                sensors.get("telExternalVoltage"),
+                sensors.get("telLatitude"),
+                sensors.get("telLongitude"),
+                sensors.get("telMovement"),
+                sensors.get("telPulseCounterDin1"),
+                sensors.get("telPulseCounterDin2"),
+                sensors.get("telSattelites"),
+                sensors.get("telSleepMode"),
+                sensors.get("telTotalOdometer"),
+                sensors.get("telSpeed"),
                 batch.marker,
             ))
 

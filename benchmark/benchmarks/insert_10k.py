@@ -8,6 +8,23 @@ from typing import Dict, Any
 from benchmark.db.base import BATCH_SIZE, Database, InsertRow, InsertBatch
 
 
+def _build_sensor_payload(idx: int) -> dict[str, float]:
+    return {
+        "telAltitude": 130.0 + (idx % 20),
+        "telAngle": float((idx * 7) % 360),
+        "telExternalVoltage": 12150.0 + (idx % 50),
+        "telLatitude": 48.42177 + (idx % 100) * 0.00001,
+        "telLongitude": 14.14441 + (idx % 100) * 0.00001,
+        "telMovement": float(idx % 2),
+        "telPulseCounterDin1": float(idx * 2),
+        "telPulseCounterDin2": float(idx * 3),
+        "telSattelites": 10.0 + (idx % 8),
+        "telSleepMode": float((idx // 120) % 2),
+        "telSpeed": 10.0 + idx % 100 * 0.1,
+        "telTotalOdometer": 13_132_959.0 + idx,
+    }
+
+
 @dataclass(frozen=True)
 class BenchmarkRun:
     benchmark: str
@@ -23,7 +40,7 @@ def run_insert_10k(db: Database, db_name: str, start_ts: datetime, rows: int) ->
 
     end_ts = start_ts + timedelta(seconds=rows - 1)
     batch_rows = [
-        InsertRow(timestamp=start_ts + timedelta(seconds=idx), tel_speed=10.0 + idx % 100 * 0.1)
+        InsertRow(timestamp=start_ts + timedelta(seconds=idx), sensors=_build_sensor_payload(idx))
         for idx in range(rows)
     ]
     t0 = perf_counter_ns()
