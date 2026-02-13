@@ -18,7 +18,7 @@ JOB_FULL_SQL = """
                """
 
 LAST_N_BY_VEHICLE_SQL = """
-                        SELECT d.*
+                        SELECT d.timestamp, d.telSpeed
                         FROM dataset d
                                  JOIN job j ON d.job_id = j.id
                         WHERE j.vehicle_id = %s

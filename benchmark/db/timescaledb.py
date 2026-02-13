@@ -19,8 +19,8 @@ JOB_FULL_SQL = """
                """
 
 LAST_N_BY_VEHICLE_SQL = """
-                        SELECT *
-                        FROM dataset
+                        SELECT ds.timestamp, ds.telSpeed
+                        FROM dataset ds
                         WHERE vehicle_id = %s
                         ORDER BY timestamp DESC
                             LIMIT %s; \

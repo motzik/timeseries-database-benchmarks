@@ -16,7 +16,7 @@ JOB_FULL_SQL = """
                """
 
 LAST_N_BY_VEHICLE_SQL = """
-                        SELECT d.*
+                        SELECT d.[timestamp], d.telSpeed
                         FROM dbo.dataset d
                                  JOIN dbo.job j ON j.id = d.job_id
                         WHERE j.vehicle_id = ?
