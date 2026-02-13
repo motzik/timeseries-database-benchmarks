@@ -1,10 +1,25 @@
 from abc import ABC, abstractmethod
-from typing import Any, Iterable, Optional, Sequence
+from typing import Any, Mapping, Optional, Sequence
 from dataclasses import dataclass
 from datetime import datetime
 
 
 BATCH_SIZE = 500
+
+SENSOR_FIELDS: tuple[str, ...] = (
+    "telAltitude",
+    "telAngle",
+    "telExternalVoltage",
+    "telLatitude",
+    "telLongitude",
+    "telMovement",
+    "telPulseCounterDin1",
+    "telPulseCounterDin2",
+    "telSattelites",
+    "telSleepMode",
+    "telSpeed",
+    "telTotalOdometer",
+)
 
 
 @dataclass(frozen=True)
@@ -16,7 +31,7 @@ class QueryResult:
 @dataclass(frozen=True)
 class InsertRow:
     timestamp: datetime
-    tel_speed: float
+    sensors: Mapping[str, Optional[float]]
 
 
 @dataclass(frozen=True)
